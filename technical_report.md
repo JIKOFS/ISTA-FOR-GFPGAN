@@ -38,6 +38,36 @@
 
 该模块完全符合课程中“基于稀疏表示的图像退化逆问题求解”章节的推导，可在 `test_local.py` 中单独验算对任意张量的去噪效果。
 
+### 3.3 Algorithm 1 式的迭代流程
+
+结合附件中的呈现形式，可以把 `numerical_solver.py` 中的 ISTA 过程写成下述“算法 1”，并指出关键的数学原理：
+
+```
+Algorithm 1  Sparse Refinement via ISTA
+Input:
+    y            观测块（低质图像 unfold 后的向量）
+    D            DCT 正交字典
+    λ, α         稀疏正则系数与梯度步长
+    x^(i-1)      上一次迭代的稀疏系数
+Output:
+    x^(i)        新的稀疏系数
+
+1:  # Calculate Smoothed Residual
+2:  r̂^(i) = Dᵀ(D · x^(i-1) - y)          ▷ 利用正交 DCT 求梯度
+3:  # Gradient Step (Data Fidelity)
+4:  z = x^(i-1) - α · r̂^(i)              ▷ 最小化 0.5‖Ax - y‖₂²
+5:  # Soft Threshold (Sparsity)
+6:  x^(i) = SoftThreshold(z, λ·α)         ▷ 施加 L1 稀疏先验
+7:  # Loss Tracking (可选)
+8:  ℒ^(i) = 0.5‖D x^(i) - y‖₂² + λ‖x^(i)‖₁
+9:  重复以上步骤直至迭代上限或残差收敛
+```
+
+- **Step 2** 对应代码中的 `grad_block = D · residual · Dᵀ`，源自正交变换的逆传。
+- **Step 4** 表示在数据保真项上的梯度下降。
+- **Step 6** 为软阈值算子 `S_{λ·α}`，保证稀疏性，是 L1 正则化的闭式解。
+- 通过记录 `ℒ^(i)` 或残差均值，可仿照图示那样动态分析每次迭代的贡献，并在 UI/日志中展示“越迭代越好”的趋势。
+
 ## 4. 深度学习融合管道
 
 `inference_pipeline.py` 定义了 `RestorationPipeline`：

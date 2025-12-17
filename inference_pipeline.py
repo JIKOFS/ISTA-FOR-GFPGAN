@@ -15,9 +15,11 @@ sys.modules["torchvision.transforms.functional_tensor"] = shim
 
 from gfpgan import GFPGANer
 from numerical_solver import ISTADenoising
+from post_processor import LocalConsistencyPostProcessor
 
 class RestorationPipeline:
-    def __init__(self, model_path='experiments/pretrained_models/GFPGANv1.3.pth', device='cuda'):
+    def __init__(self, model_path='experiments/pretrained_models/GFPGANv1.3.pth', device='cuda',
+                 enable_postprocess=True, postprocess_alpha=0.3):
         self.device = device if torch.cuda.is_available() else 'cpu'
         
         # 初始化数值求解器
@@ -39,6 +41,11 @@ class RestorationPipeline:
                 bg_upsampler=None, # 暂不使用背景增强以专注人脸
                 device=self.device
             )
+        
+        self.enable_postprocess = enable_postprocess
+        self.post_processor = None
+        if enable_postprocess:
+            self.post_processor = LocalConsistencyPostProcessor(alpha=postprocess_alpha)
 
     def tensor_to_img(self, tensor):
         """
@@ -61,7 +68,7 @@ class RestorationPipeline:
         tensor = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0)
         return tensor.to(self.device)
 
-    def run(self, img, ista_iters=20, ista_lambda=0.05):
+    def run(self, img, ista_iters=20, ista_lambda=0.05, enable_postprocess=None, postprocess_alpha=None):
         """
         执行完整修复流程
         img: 输入图像 (OpenCV BGR format)
@@ -69,7 +76,8 @@ class RestorationPipeline:
         Returns:
             original: 原图
             numerical_result: 经过 ISTA 数值去噪后的中间结果
-            final_result: 最终 GAN 修复结果
+            gfpgan_only: GFPGAN 原始输出
+            final_result: 经过后处理的最终结果
         """
         if self.gfpgan is None:
             raise RuntimeError("GFPGAN model not loaded.")
@@ -93,16 +101,23 @@ class RestorationPipeline:
         # GFPGANer.enhance 接受 BGR numpy array
         # aligned=False 让 GFPGAN 自动检测和对齐人脸
         # 这里的输入是 numerical_result
-        _, _, final_output = self.gfpgan.enhance(
+        _, _, gfpgan_output = self.gfpgan.enhance(
             numerical_result, 
             has_aligned=False, 
             only_center_face=False, 
             paste_back=True
         )
         
-        # 同时也跑一个不带 ISTA 的纯 GAN 结果用于对比 (可选，这里暂不返回以简化 UI)
+        # 4. 后处理: 局部亮度重标定 + 微纹理平滑
+        use_post = self.enable_postprocess if enable_postprocess is None else enable_postprocess
+        if use_post and self.post_processor is not None:
+            if postprocess_alpha is not None:
+                self.post_processor.alpha = postprocess_alpha
+            final_output = self.post_processor.process(gfpgan_output, numerical_result)
+        else:
+            final_output = gfpgan_output
         
-        return img, numerical_result, final_output
+        return img, numerical_result, gfpgan_output, final_output
 
 if __name__ == "__main__":
     # 测试代码

@@ -6,8 +6,10 @@
 
 - `numerical_solver.py`: 包含基于数值分析的 ISTA 算法实现（显式数学迭代）。
 - `inference_pipeline.py`: 整合数值去噪与 GFPGAN 推理的完整流程。
-- `app.py`: 基于 Gradio 的 Web 可视化演示界面。
+- `app.py`: 基于 Gradio 的 Web 可视化演示界面（原图 / ISTA / GFPGAN / GFPGAN+后处理四路对比）。
 - `download_weights.py`: 自动下载所需的预训练模型权重。
+- `post_processor.py`: GFPGAN 输出的局部一致性后处理（亮度重标定 + 微纹理平滑）。
+- `evaluate_metrics.py`: 批量计算“原图 / 数值结果 / GFPGAN / GFPGAN+后处理”四阶段的 PSNR / SSIM，并生成 Markdown 报告。
 
 ## 快速上手与部署
 
@@ -79,6 +81,8 @@ docker run -dit \
 ```
 
 进入容器后重复步骤 2~6 即可。若想多机复用，只需改变 `-v` 映射与端口号。
+
+- **实验指标**：运行 `python evaluate_metrics.py`（默认读取 `data/sample_dataset/{LQ,HQ}`）即可计算四阶段结果（原图 / 数值中间 / GFPGAN / GFPGAN+后处理）相对于高质量参考的 PSNR 与 SSIM，并在 `reports/metrics_report.md` 中生成表格；若使用其他数据集，可通过 `--lq_dir` / `--hq_dir` 指定。
 
 ## 数值分析结合点说明
 
